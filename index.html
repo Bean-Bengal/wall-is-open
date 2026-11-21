@@ -1,0 +1,220 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WALL IS OPEN</title></head><body>
+<script data-bean-store>(function(){if(typeof location!=='undefined'&&location&&location.protocol==='about:'&&typeof document!=='undefined'&&document.addEventListener){document.addEventListener('click',function(e){var a=e.target&&e.target.closest&&e.target.closest('a[href^="#"]');if(!a||a.target==='_blank')return;e.preventDefault();try{location.hash=a.getAttribute('href')}catch(x){}},true)}if(typeof window==='undefined')return;try{window.localStorage.getItem('x');return}catch(e){}var d=Object.assign({},window.__BEAN_SAVED||{});function post(){try{parent.postMessage({type:'bean-store',data:d},'*')}catch(e){}}var ls={getItem:function(k){return Object.prototype.hasOwnProperty.call(d,k)?d[k]:null},setItem:function(k,v){d[k]=String(v);post()},removeItem:function(k){delete d[k];post()},clear:function(){d={};post()},key:function(i){return Object.keys(d)[i]||null}};Object.defineProperty(ls,'length',{get:function(){return Object.keys(d).length}});try{Object.defineProperty(window,'localStorage',{value:ls,configurable:true})}catch(e){}})();</script><script data-kit-in="voxel">
+/* Bean's voxel kit (12 Nov), for the print shop. A 3D model made of little cubes, built with a
+   few commands, shown turning on the page (drag to turn it, scroll or pinch to zoom), with a
+   print preview that builds it up layer by layer the way the printer does, its size when
+   printed, and an STL file a real 3D printer can print. Kit.voxel({ … }) on Kit. */
+(function () {
+  'use strict';
+  var K = window.Kit = window.Kit || {};
+  var doc = document;
+  function css(t) { var s = doc.createElement('style'); s.textContent = t; (doc.head || doc.documentElement).appendChild(s); }
+  function el(tag, cls, html) { var e = doc.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  css([
+    'html,body{margin:0;background:#eef0f2;color:#24262a;font:15px/1.5 ui-rounded,"Nunito","Segoe UI",system-ui,sans-serif}',
+    '.kv{max-width:980px;margin:0 auto;padding:18px 16px 50px;display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:18px}',
+    '.kv h1{grid-column:1/-1;margin:0;font-size:clamp(24px,5vw,34px);letter-spacing:-.01em}',
+    '.kv-sub{grid-column:1/-1;margin:-12px 0 0;color:#6a6e75}',
+    '.kv-stage{position:relative;border-radius:16px;overflow:hidden;background:radial-gradient(ellipse at 50% 30%,#ffffff 0%,#dfe3e8 70%,#cfd4da 100%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.06);touch-action:none;cursor:grab;aspect-ratio:4/3}',
+    '.kv-stage canvas{width:100%;height:100%;display:block}',
+    '.kv-hint{position:absolute;left:12px;bottom:10px;font-size:12px;color:#7a7f87;pointer-events:none}',
+    '.kv-panel{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 3px rgba(0,0,0,.06);align-self:start}',
+    '.kv-panel h3{margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#7a7f87}',
+    '.kv-panel p{margin:4px 0}',
+    '.kv-panel input[type=range]{width:100%;accent-color:#e07a3f}',
+    '.kv-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}',
+    '.kv-btn{flex:1;appearance:none;border:1px solid #d9dde2;background:#f6f7f9;font-family:inherit;font-weight:600;font-size:13px;padding:9px 10px;border-radius:999px;cursor:pointer;min-height:38px;color:inherit}',
+    '.kv-btn.go{background:#e07a3f;border-color:#e07a3f;color:#fff}',
+    '.kv-btn:focus-visible{outline:3px solid #e07a3f;outline-offset:2px}',
+    '.kv-note{grid-column:1/-1;background:#fff;border-radius:14px;padding:14px 16px;white-space:pre-wrap}',
+    '.kv-sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}',
+    '@media (max-width:720px){.kv{grid-template-columns:1fr}}'
+  ].join(''));
+
+  // ---- The model: cubes on a grid (y is up) -------------------------------------------------
+  function Model(palette) {
+    var cells = new Map(), pal = palette || {};
+    function key(x, y, z) { return x + ',' + y + ',' + z; }
+    function col(c) { return pal[c] || c || '#d9a05b'; }
+    var m = {
+      set: function (x, y, z, c) { x = Math.round(x); y = Math.round(y); z = Math.round(z); if (cells.size > 60000) return m; cells.set(key(x, y, z), [x, y, z, col(c)]); return m; },
+      remove: function (x, y, z) { cells.delete(key(Math.round(x), Math.round(y), Math.round(z))); return m; },
+      get: function (x, y, z) { var v = cells.get(key(x, y, z)); return v ? v[3] : null; },
+      has: function (x, y, z) { return cells.has(key(x, y, z)); },
+      box: function (x, y, z, w, h, d, c, hollow) { for (var i = 0; i < w; i++) for (var j = 0; j < h; j++) for (var k = 0; k < d; k++) if (!hollow || i === 0 || j === 0 || k === 0 || i === w - 1 || j === h - 1 || k === d - 1) m.set(x + i, y + j, z + k, c); return m; },
+      sphere: function (cx, cy, cz, r, c) { var R = Math.ceil(r); for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) for (var k = -R; k <= R; k++) if (i * i + j * j + k * k <= r * r + r * 0.5) m.set(cx + i, cy + j, cz + k, c); return m; },
+      ellipsoid: function (cx, cy, cz, rx, ry, rz, c) { for (var i = -Math.ceil(rx); i <= rx; i++) for (var j = -Math.ceil(ry); j <= ry; j++) for (var k = -Math.ceil(rz); k <= rz; k++) if (i * i / (rx * rx) + j * j / (ry * ry) + k * k / (rz * rz) <= 1.05) m.set(cx + i, cy + j, cz + k, c); return m; },
+      cylinder: function (cx, y, cz, r, h, c) { var R = Math.ceil(r); for (var j = 0; j < h; j++) for (var i = -R; i <= R; i++) for (var k = -R; k <= R; k++) if (i * i + k * k <= r * r + r * 0.5) m.set(cx + i, y + j, cz + k, c); return m; },
+      cone: function (cx, y, cz, r, h, c) { for (var j = 0; j < h; j++) { var rr = r * (1 - j / h); var R = Math.ceil(rr); for (var i = -R; i <= R; i++) for (var k = -R; k <= R; k++) if (i * i + k * k <= rr * rr + 0.3) m.set(cx + i, y + j, cz + k, c); } return m; },
+      line: function (x1, y1, z1, x2, y2, z2, c) { var n = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1), Math.abs(z2 - z1), 1); for (var i = 0; i <= n; i++) m.set(x1 + (x2 - x1) * i / n, y1 + (y2 - y1) * i / n, z1 + (z2 - z1) * i / n, c); return m; },
+      // A layer drawn as text, seen from above: one string per row (z), one character per cube (x); '.' or ' ' is empty.
+      layer: function (y, rows, colors, x0, z0) { rows.forEach(function (row, k) { for (var i = 0; i < row.length; i++) { var ch = row[i]; if (ch !== '.' && ch !== ' ') m.set((x0 || 0) + i, y, (z0 || 0) + k, (colors && colors[ch]) || pal[ch] || ch); } }); return m; },
+      layers: function (list, colors, x0, z0) { list.forEach(function (rows, y) { m.layer(y, rows, colors, x0, z0); }); return m; },
+      // Carving: take cubes away the same ways.
+      carve: { box: function (x, y, z, w, h, d) { for (var i = 0; i < w; i++) for (var j = 0; j < h; j++) for (var k = 0; k < d; k++) m.remove(x + i, y + j, z + k); return m; }, sphere: function (cx, cy, cz, r) { var R = Math.ceil(r); for (var i = -R; i <= R; i++) for (var j = -R; j <= R; j++) for (var k = -R; k <= R; k++) if (i * i + j * j + k * k <= r * r) m.remove(cx + i, cy + j, cz + k); return m; } },
+      mirror: function (axis, at) { at = at || 0; Array.from(cells.values()).forEach(function (v) { var p = v.slice(); var i = axis === 'x' ? 0 : axis === 'z' ? 2 : 1; p[i] = 2 * at - p[i]; m.set(p[0], p[1], p[2], p[3]); }); return m; },
+      paint: function (fn) { var back = {}; Object.keys(pal).forEach(function (k) { back[pal[k]] = k; }); cells.forEach(function (v) { var c = fn(v[0], v[1], v[2], back[v[3]] || v[3]); if (c) v[3] = col(c); }); return m; }, // c: the palette letter, if it has one
+      count: function () { return cells.size; },
+      cubes: function () { return Array.from(cells.values()); }
+    };
+    return m;
+  }
+
+  function shade(hex, f) { var n = parseInt(String(hex).replace('#', '').replace(/^(.)(.)(.)$/, '$1$1$2$2$3$3'), 16); if (isNaN(n)) n = 0xd9a05b; var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255; return 'rgb(' + Math.min(255, Math.round(r * f)) + ',' + Math.min(255, Math.round(g * f)) + ',' + Math.min(255, Math.round(b * f)) + ')'; }
+  var FACES = [ // normal, then the four corners of that face of a unit cube
+    [[1, 0, 0], [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]]], [[-1, 0, 0], [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]]],
+    [[0, 1, 0], [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]]], [[0, -1, 0], [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]]],
+    [[0, 0, 1], [[1, 0, 1], [1, 1, 1], [0, 1, 1], [0, 0, 1]]], [[0, 0, -1], [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]]]];
+
+  // The faces that show (a cube's face against another cube is never seen).
+  function surfaces(cubes, has, upTo) {
+    var out = [];
+    cubes.forEach(function (v) { if (upTo != null && v[1] > upTo) return; FACES.forEach(function (f, i) { var n = f[0], nx = v[0] + n[0], ny = v[1] + n[1], nz = v[2] + n[2]; if (has(nx, ny, nz) && (upTo == null || ny <= upTo)) return; out.push({ v: v, f: i }); }); });
+    return out;
+  }
+
+  // An STL file (binary) of the outside surface, in millimetres.
+  function stl(cubes, has, mm) {
+    var faces = surfaces(cubes, has), dv = new DataView(new ArrayBuffer(84 + faces.length * 2 * 50)), o = 80;
+    dv.setUint32(o, faces.length * 2, true); o += 4;
+    faces.forEach(function (s) {
+      var f = FACES[s.f], c = f[1].map(function (p) { return [(s.v[0] + p[0]) * mm, (s.v[2] + p[2]) * mm, (s.v[1] + p[1]) * mm]; }); // z up for printers
+      [[0, 1, 2], [0, 2, 3]].forEach(function (t) { var n = f[0]; [n[0], n[2], n[1]].forEach(function (x) { dv.setFloat32(o, x, true); o += 4; }); t.forEach(function (i) { c[i].forEach(function (x) { dv.setFloat32(o, x, true); o += 4; }); }); dv.setUint16(o, 0, true); o += 2; });
+    });
+    return new Blob([dv], { type: 'model/stl' });
+  }
+
+  // Just the model, with nothing drawn (the brain uses this to stand a print of it in his town).
+  K.voxelModel = function (opts) { var m = Model(opts.palette); try { if (opts.build) opts.build(m); if (opts.layers) m.layers(opts.layers, opts.colors); } catch (e) { /* what got built is what there is */ } return m; };
+  K.voxel = function (opts) {
+    var m = Model(opts.palette);
+    try { if (opts.build) opts.build(m); if (opts.layers) m.layers(opts.layers, opts.colors); } catch (e) { setTimeout(function () { throw e; }); }
+    var cubes = m.cubes(), mm = opts.mm || 2;
+    var lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    cubes.forEach(function (v) { for (var i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], v[i]); hi[i] = Math.max(hi[i], v[i] + 1); } });
+    if (!cubes.length) { lo = [0, 0, 0]; hi = [1, 1, 1]; }
+    var centre = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2], span = Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], 1);
+
+    var root = el('div', 'kv'); (doc.body || doc.documentElement).appendChild(root);
+    root.appendChild(el('h1', null, esc(opts.title || 'A model')));
+    root.appendChild(el('p', 'kv-sub', esc(opts.by ? 'by ' + opts.by : 'made of ' + cubes.length + ' little cubes')));
+    var stage = el('div', 'kv-stage'), cv = doc.createElement('canvas'); stage.appendChild(cv); stage.appendChild(el('div', 'kv-hint', 'drag to turn · scroll or pinch to zoom')); root.appendChild(stage);
+    var panel = el('div', 'kv-panel'); root.appendChild(panel);
+    var W = Math.round((hi[0] - lo[0]) * mm), D = Math.round((hi[2] - lo[2]) * mm), H = Math.round((hi[1] - lo[1]) * mm), layers = hi[1] - lo[1];
+    var used = {}; cubes.forEach(function (v) { used[v[3]] = (used[v[3]] || 0) + 1; });
+    panel.innerHTML = '<h3>When it’s printed</h3><p>' + W + ' × ' + D + ' mm, ' + H + ' mm tall</p><p>' + cubes.length + ' cubes, ' + layers + ' layers</p><p>' + Object.keys(used).slice(0, 8).map(function (c) { return '<span class="kv-sw" style="background:' + esc(c) + '"></span>'; }).join('') + '</p>' +
+      '<h3 style="margin-top:14px">Print preview</h3><input type="range" min="0" max="' + layers + '" value="' + layers + '" aria-label="Printed up to this layer"><p class="kv-lay">all ' + layers + ' layers</p>' +
+      '<div class="kv-btns"><button class="kv-btn" data-a="spin">' + (opts.spin === false ? 'Turn it' : 'Stop turning') + '</button><button class="kv-btn" data-a="reset">Reset</button><button class="kv-btn" data-a="print">Watch it print</button><button class="kv-btn go" data-a="stl">⤓ STL for a printer</button></div>';
+    if (opts.note || opts.notes) root.appendChild(el('div', 'kv-note', esc(opts.note || opts.notes)));
+
+    var YAW = Math.PI - 0.6, yaw = opts.yaw != null ? YAW + opts.yaw : YAW, pitch = opts.pitch != null ? opts.pitch : 0.5, zoom = 1, spin = opts.spin !== false, upTo = null, light = [0.45, 0.8, 0.35], g = cv.getContext('2d'), dirty = true;
+    var has = m.has, faces = surfaces(cubes, has);
+    function setUpTo(n) { upTo = n >= layers ? null : lo[1] + n - 1; faces = surfaces(cubes, has, upTo); dirty = true; panel.querySelector('.kv-lay').textContent = upTo == null ? 'all ' + layers + ' layers' : 'up to layer ' + n + ' of ' + layers; panel.querySelector('input').value = n; }
+    function draw() {
+      var w = stage.clientWidth, h = stage.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+      g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+      var cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch), scale = Math.min(w, h) * 0.62 / span * zoom, dist = span * 3.2;
+      function P(x, y, z) { x -= centre[0]; y -= centre[1]; z -= centre[2]; var x1 = x * cy - z * sy, z1 = x * sy + z * cy, y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp, k = dist / (dist + z2); return [w / 2 + x1 * scale * k, h * 0.54 - y1 * scale * k, z2]; }
+      // a soft shadow under it
+      var base = P(centre[0], lo[1], centre[2]); g.fillStyle = 'rgba(0,0,0,.12)'; g.beginPath(); g.ellipse(base[0], base[1] + 4, span * scale * 0.55, span * scale * 0.55 * Math.max(0.12, Math.sin(pitch)) , 0, 0, 7); g.fill();
+      var list = [];
+      for (var i = 0; i < faces.length; i++) {
+        var s = faces[i], f = FACES[s.f], n = f[0];
+        var nx = n[0] * cy - n[2] * sy, nz1 = n[0] * sy + n[2] * cy, nz = n[1] * sp + nz1 * cp; // the normal, turned
+        if (nz > 0.02) continue; // facing away
+        var pts = f[1].map(function (c) { return P(s.v[0] + c[0], s.v[1] + c[1], s.v[2] + c[2]); });
+        var depth = (pts[0][2] + pts[1][2] + pts[2][2] + pts[3][2]) / 4;
+        var dot = n[0] * light[0] + n[1] * light[1] + n[2] * light[2], lit = 0.94 + 0.22 * Math.max(-0.75, dot); void nx;
+        list.push([depth, pts, shade(s.v[3], lit), shade(s.v[3], lit * 0.86)]);
+      }
+      list.sort(function (a, b) { return b[0] - a[0]; });
+      g.lineJoin = 'round';
+      for (i = 0; i < list.length; i++) { var q = list[i], p = q[1]; g.beginPath(); g.moveTo(p[0][0], p[0][1]); g.lineTo(p[1][0], p[1][1]); g.lineTo(p[2][0], p[2][1]); g.lineTo(p[3][0], p[3][1]); g.closePath(); g.fillStyle = q[2]; g.fill(); g.strokeStyle = q[3]; g.lineWidth = 0.5; g.stroke(); }
+      if (upTo != null) { var nozzle = P(centre[0], upTo + 1.6, centre[2]); g.fillStyle = '#3a3d42'; g.fillRect(nozzle[0] - 9, nozzle[1] - 18, 18, 14); g.beginPath(); g.moveTo(nozzle[0] - 5, nozzle[1] - 4); g.lineTo(nozzle[0] + 5, nozzle[1] - 4); g.lineTo(nozzle[0], nozzle[1] + 3); g.fill(); }
+      dirty = false;
+    }
+    var last = 0, printing = null;
+    function frame(t) {
+      if (spin) { yaw += Math.min(0.05, (t - last) / 1000) * 0.5; dirty = true; }
+      if (printing && t - printing.t > 160) { printing.t = t; printing.n++; setUpTo(printing.n); if (printing.n >= layers) printing = null; }
+      last = t; if (dirty) draw(); requestAnimationFrame(frame);
+    }
+    // Turning and zooming, with a finger or a mouse.
+    var pts = new Map(), startD = 0, startZ = 1;
+    stage.addEventListener('pointerdown', function (e) { stage.setPointerCapture(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]); if (pts.size === 2) { var a = Array.from(pts.values()); startD = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]); startZ = zoom; } spin = false; panel.querySelector('[data-a=spin]').textContent = 'Turn it'; });
+    stage.addEventListener('pointermove', function (e) { var p = pts.get(e.pointerId); if (!p) return; if (pts.size === 2) { pts.set(e.pointerId, [e.clientX, e.clientY]); var a = Array.from(pts.values()); zoom = Math.max(0.4, Math.min(4, startZ * Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]) / (startD || 1))); } else { yaw += (e.clientX - p[0]) * 0.01; pitch = Math.max(-0.2, Math.min(1.45, pitch + (e.clientY - p[1]) * 0.01)); pts.set(e.pointerId, [e.clientX, e.clientY]); } dirty = true; });
+    function up(e) { pts.delete(e.pointerId); }
+    stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+    stage.addEventListener('wheel', function (e) { e.preventDefault(); zoom = Math.max(0.4, Math.min(4, zoom * Math.exp(-e.deltaY * 0.0015))); dirty = true; }, { passive: false });
+    window.addEventListener('resize', function () { dirty = true; });
+    panel.querySelector('input').oninput = function (e) { printing = null; setUpTo(+e.target.value); };
+    panel.addEventListener('click', function (e) {
+      var a = e.target.getAttribute && e.target.getAttribute('data-a'); if (!a) return;
+      if (a === 'spin') { spin = !spin; e.target.textContent = spin ? 'Stop turning' : 'Turn it'; }
+      if (a === 'reset') { yaw = YAW; pitch = 0.5; zoom = 1; setUpTo(layers); dirty = true; }
+      if (a === 'print') { printing = { n: 0, t: 0 }; setUpTo(0); }
+      if (a === 'stl') { var link = doc.createElement('a'); link.href = URL.createObjectURL(stl(cubes, has, mm)); link.download = String(opts.title || 'model').replace(/[^\w\- ]+/g, '') + '.stl'; doc.body.appendChild(link); link.click(); link.remove(); }
+    });
+    // His town can ask a model page for its cubes (to stand a big print of it in the world): the
+    // outside ones only, as [x, y, z, colour number] with the list of colours.
+    window.addEventListener('message', function (e) {
+      if (!e.data || e.data.type !== 'bean-voxels' || !e.source) return;
+      var pal = [], at = {}, flat = [];
+      cubes.forEach(function (v) { if (has(v[0] + 1, v[1], v[2]) && has(v[0] - 1, v[1], v[2]) && has(v[0], v[1] + 1, v[2]) && has(v[0], v[1] - 1, v[2]) && has(v[0], v[1], v[2] + 1) && has(v[0], v[1], v[2] - 1)) return; if (!(v[3] in at)) { at[v[3]] = pal.length; pal.push(v[3]); } flat.push(v[0], v[1], v[2], at[v[3]]); });
+      e.source.postMessage({ type: 'bean-voxels', id: e.data.id, pal: pal, cubes: flat.slice(0, 4 * 12000), lo: lo, hi: hi }, '*');
+    });
+    requestAnimationFrame(frame);
+    return { model: m, size: { w: W, d: D, h: H, mm: mm, cubes: cubes.length, layers: layers } };
+  };
+  K.voxel.model = Model;
+})();
+
+</script><script>
+Kit.voxel({ title:'WALL IS OPEN', by:'Bean', note:'A Baba Is You room: a wall with a gap, and Baba in it.', mm:2, spin:true, pitch:0.6,
+palette:{ d:'#1c1c2a', s:'#8a8478', h:'#a8a294', b:'#3b6fd6', c:'#d6e6ff', w:'#f4f1ea', k:'#222222', p:'#e58aa0' },
+build(m){
+  // floor 72 x 44
+  m.box(-36,0,-22,72,2,44,'d');
+  // stone wall with a fully open gap at x -7..6
+  m.box(-34,2,-20,27,10,4,'s');
+  m.box(7,2,-20,27,10,4,'s');
+  m.box(-34,12,-20,27,1,4,'h');
+  m.box(7,12,-20,27,1,4,'h');
+  const glyph={
+   W:['x...x','x...x','x.x.x','xx.xx','x...x'],
+   A:['.xxx.','x...x','xxxxx','x...x','x...x'],
+   L:['x....','x....','x....','x....','xxxxx'],
+   I:['xxx','.x.','.x.','.x.','xxx'],
+   S:['.xxxx','x....','.xxx.','....x','xxxx.'],
+   O:['.xxx.','x...x','x...x','x...x','.xxx.'],
+   P:['xxxx.','x...x','xxxx.','x....','x....'],
+   E:['xxxxx','x....','xxxx.','x....','xxxxx'],
+   N:['x...x','xx..x','x.x.x','x..xx','x...x']};
+  function word(txt,x0){
+    let w=0; for(const ch of txt) w+=glyph[ch][0].length+1;
+    w=w-1+2;
+    m.box(x0,2,-6,w,7,2,'b');
+    let x=x0+1;
+    for(const ch of txt){const g=glyph[ch];
+      for(let r=0;r<5;r++)for(let q=0;q<g[r].length;q++) if(g[r][q]=='x') m.set(x+q,7-r,-4,'c');
+      x+=g[0].length+1;}
+  }
+  word('WALL',-32);
+  word('IS',-5);
+  word('OPEN',8);
+  // Baba in the gap, facing front
+  m.box(-3,2,-19,6,4,5,'w');
+  m.box(-4,6,-19,8,5,5,'w');
+  m.box(-4,11,-19,2,2,2,'w');
+  m.box(2,11,-19,2,2,2,'w');
+  m.box(-3,2,-14,2,1,1,'w');
+  m.box(1,2,-14,2,1,1,'w');
+  m.box(3,3,-20,2,2,2,'w');
+  m.box(-3,8,-14,2,2,1,'k');
+  m.box(1,8,-14,2,2,1,'k');
+  m.set(0,7,-14,'p');
+  m.set(-1,7,-14,'p');
+}});
+</script></body></html>
